@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>비밀 코드 채팅</title>
+    <title>Node Chat</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <link
       rel="stylesheet"
@@ -184,6 +184,15 @@
         align-self: flex-start;
         border-bottom-left-radius: 5px;
       }
+      .system-message {
+        text-align: center;
+        color: var(--text-secondary);
+        font-style: italic;
+        font-size: 13px;
+        padding: 10px 0;
+        width: 100%;
+        align-self: center;
+      }
       .chat-form {
         display: flex;
         padding: 15px;
@@ -192,26 +201,18 @@
         align-items: center;
         gap: 10px;
       }
-      #message-input,
-      #next-node-input {
+      #message-input {
+        flex-grow: 1;
         padding: 12px 18px;
         border: none;
         border-radius: 22px;
         background-color: #f0f2f5;
         font-size: 15px;
       }
-      #message-input:focus,
-      #next-node-input:focus {
+      #message-input:focus {
         outline: none;
       }
-      #message-input {
-        flex-grow: 1;
-      }
-      #next-node-input {
-        width: 30%;
-      }
-      #send-button,
-      #goto-node-button {
+      #send-button {
         background: var(--primary-accent);
         color: white;
         border: none;
@@ -226,15 +227,8 @@
         justify-content: center;
         align-items: center;
       }
-      #send-button:hover,
-      #goto-node-button:hover {
+      #send-button:hover {
         transform: scale(1.1);
-      }
-      #goto-node-button {
-        font-size: 14px;
-        border-radius: 22px;
-        width: auto;
-        padding: 0 15px;
       }
     </style>
   </head>
@@ -262,18 +256,10 @@
           <input
             type="text"
             id="message-input"
-            placeholder="메시지..."
+            placeholder="메시지 또는 /go <노드 키>"
             autocomplete="off"
           />
           <button id="send-button">➤</button>
-
-          <input
-            type="text"
-            id="next-node-input"
-            placeholder="이동할 노드"
-            autocomplete="off"
-          />
-          <button id="goto-node-button">이동</button>
         </div>
       </div>
     </div>
@@ -286,8 +272,6 @@
       const leaveButton = document.getElementById("leave-button");
       const messageInput = document.getElementById("message-input");
       const sendButton = document.getElementById("send-button");
-      const nextNodeInput = document.getElementById("next-node-input");
-      const gotoNodeButton = document.getElementById("goto-node-button");
       const roomKeyInput = document.getElementById("room-key-input");
       const roomTitle = document.getElementById("room-title");
       const chatLog = document.getElementById("chat-log");
@@ -339,17 +323,32 @@
         chatLog.appendChild(msgDiv);
         chatLog.scrollTop = chatLog.scrollHeight;
       }
-      function sendMessage() {
+      function addSystemMessage(text) {
+        const msgDiv = document.createElement("div");
+        msgDiv.classList.add("system-message");
+        msgDiv.textContent = text;
+        chatLog.appendChild(msgDiv);
+        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+      function handleInput() {
         const text = messageInput.value.trim();
-        if (!text || !currentRoomKey) return;
+        if (!text) return;
 
-        const messageData = {
-          roomKey: currentRoomKey,
-          sender: { id: socket.id, nickname: myNickname },
-          text: text,
-        };
+        if (text.startsWith("/go ")) {
+          const nodeKey = text.substring(4).trim();
+          if (nodeKey) {
+            goToNode(nodeKey);
+          }
+        } else {
+          if (!currentRoomKey) return;
+          const messageData = {
+            roomKey: currentRoomKey,
+            sender: { id: socket.id, nickname: myNickname },
+            text: text,
+          };
+          socket.emit("sendMessage", messageData);
+        }
 
-        socket.emit("sendMessage", messageData);
         messageInput.value = "";
       }
 
@@ -357,6 +356,9 @@
       socket.on("history", (messages) => {
         chatLog.innerHTML = "";
         messages.forEach(addMessageToLog);
+        addSystemMessage(
+          "Pro-tip: 다른 노드로 이동하려면 '/go <노드 이름>'을 입력해보세요!"
+        );
       });
       socket.on("receiveMessage", (message) => {
         addMessageToLog(message);
@@ -368,21 +370,9 @@
         if (e.key === "Enter") joinChat();
       });
       leaveButton.addEventListener("click", leaveChat);
-      sendButton.addEventListener("click", sendMessage);
+      sendButton.addEventListener("click", handleInput);
       messageInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") sendMessage();
-      });
-      gotoNodeButton.addEventListener("click", () => {
-        const nodeKey = nextNodeInput.value.trim();
-        goToNode(nodeKey);
-        nextNodeInput.value = "";
-      });
-      nextNodeInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") {
-          const nodeKey = nextNodeInput.value.trim();
-          goToNode(nodeKey);
-          nextNodeInput.value = "";
-        }
+        if (e.key === "Enter") handleInput();
       });
     </script>
   </body>
