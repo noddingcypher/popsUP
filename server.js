@@ -1,76 +1,220 @@
-require("dotenv").config(); // .env 파일의 내용을 불러오는 코드 (맨 위에 추가)
-// 1. 필요한 부품(라이브러리)을 가져옵니다.
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
-const mongoose = require("mongoose"); // Mongoose 부품 가져오기
-const cors = require("cors"); // CORS 부품 가져오기
+const mongoose = require("mongoose");
+const cors = require("cors");
 
-// 2. 기본 앱과 서버를 만듭니다.
-const app = express(); // Express 앱 생성 (가스레인지 본체)
+const app = express();
 app.use(cors());
 
+// Render의 Health Check를 위한 응답 경로
 app.get("/", (req, res) => {
-  res.send("Hello, this is the chat server!");
+  res.send("Chat server is running successfully!");
 });
-const server = http.createServer(app); // Express 앱으로 HTTP 서버 생성 (가스레인지 점화 장치)
+
+const server = http.createServer(app);
 const io = new Server(server, {
-  // 이 부분을 수정
   cors: {
-    origin: "*", // 모든 곳에서의 통신을 허용 (개발 중에는 편리)
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });
 
-// --- 데이터베이스 연결 ---
+// --- 1. 데이터베이스 연결 ---
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB에 성공적으로 연결되었습니다."))
   .catch((err) => console.error("❌ MongoDB 연결 실패:", err));
 
+// --- 2. 새로운 DB 스키마 및 모델 정의 ---
+
+// Users 스키마
+const userSchema = new mongoose.Schema({
+  nickname: { type: String, unique: true },
+  createdAt: { type: Date, default: Date.now },
+  lastSeenAt: { type: Date, default: Date.now },
+});
+const User = mongoose.model("User", userSchema);
+
+// Nodes 스키마
+const nodeSchema = new mongoose.Schema({
+  roomKey: { type: String, unique: true, required: true },
+  createdAt: { type: Date, default: Date.now },
+  creatorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  lastActivityAt: { type: Date, default: Date.now },
+  messageCount: { type: Number, default: 0 },
+  visitCount: { type: Number, default: 0 },
+});
+const Node = mongoose.model("Node", nodeSchema);
+
+// Messages 스키마
 const messageSchema = new mongoose.Schema({
-  roomKey: String,
-  sender: { id: String, nickname: String },
+  nodeId: { type: mongoose.Schema.Types.ObjectId, ref: "Node", required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   text: String,
-  timestamp: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
 });
 const Message = mongoose.model("Message", messageSchema);
 
-// --- Socket.IO 실시간 통신 로직 ---
-// 'connection'은 손님이 가게에 전화를 걸면 자동으로 발생하는 이벤트입니다.
+// Transitions 스키마
+const transitionSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  fromNodeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Node",
+    default: null,
+  },
+  toNodeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Node",
+    required: true,
+  },
+  transitionType: String,
+  createdAt: { type: Date, default: Date.now },
+  duration: { type: Number, default: 0 },
+});
+const Transition = mongoose.model("Transition", transitionSchema);
+
+// --- 3. Socket.IO 실시간 통신 로직 ---
 io.on("connection", (socket) => {
-  console.log(`[연결] 새로운 손님 전화 연결: ${socket.id}`);
+  console.log(`[연결] 새로운 유저 접속: ${socket.id}`);
 
-  // 손님이 'joinRoom'(방에 들어갈게요) 이라고 말하면 실행될 로직
-  socket.on("joinRoom", async ({ roomKey }) => {
-    socket.join(roomKey); // 손님을 해당 방 번호(roomKey)와 연결
-    console.log(`[입장] 손님 ${socket.id} 가 ${roomKey} 방에 입장.`);
-
-    // 이 방의 이전 주문 내역(채팅 기록)을 찾아서
-    const history = await Message.find({ roomKey: roomKey })
-      .sort({ timestamp: 1 })
-      .limit(50);
-    // 방금 전화한 손님에게만 'history'라는 이름으로 이전 주문 내역을 보내줌
-    socket.emit("history", history);
+  // 사용자 정보 설정 (최초 연결 시)
+  socket.on("userSetup", async ({ nickname }) => {
+    try {
+      // 닉네임으로 사용자를 찾거나, 없으면 새로 생성 (upsert)
+      const user = await User.findOneAndUpdate(
+        { nickname: nickname },
+        {
+          $set: { lastSeenAt: new Date() },
+          $setOnInsert: { nickname: nickname },
+        },
+        { upsert: true, new: true }
+      );
+      // 클라이언트에게 최종 확정된 사용자 정보를 보내줌
+      socket.emit("sessionEstablished", {
+        userId: user._id,
+        nickname: user.nickname,
+      });
+    } catch (error) {
+      console.error("[에러] 사용자 설정 실패:", error);
+    }
   });
 
-  // 손님이 'sendMessage'(주문할게요) 이라고 말하면 실행될 로직
-  socket.on("sendMessage", async ({ roomKey, sender, text }) => {
-    const newMessage = new Message({ roomKey, sender, text });
-    const savedMessage = await newMessage.save();
+  // 노드 입장 및 전환 기록 (핵심 로직)
+  socket.on("joinNodeAndLogTransition", async (data) => {
+    const { userId, fromNodeKey, toNodeKey, duration, transitionType } = data;
+    if (!userId || !toNodeKey) return;
 
-    io.to(roomKey).emit("receiveMessage", savedMessage);
+    try {
+      // fromNode와 toNode의 DB 문서를 찾거나, 없으면 새로 생성
+      const fromNode = fromNodeKey
+        ? await Node.findOneAndUpdate(
+            { roomKey: fromNodeKey },
+            { $setOnInsert: { roomKey: fromNodeKey } },
+            { upsert: true, new: true }
+          )
+        : null;
+      const toNode = await Node.findOneAndUpdate(
+        { roomKey: toNodeKey },
+        {
+          $inc: { visitCount: 1 },
+          $set: { lastActivityAt: new Date() },
+          $setOnInsert: { roomKey: toNodeKey, creatorId: userId },
+        },
+        { upsert: true, new: true }
+      );
+
+      // Transition 로그 생성
+      await Transition.create({
+        userId,
+        fromNodeId: fromNode ? fromNode._id : null,
+        toNodeId: toNode._id,
+        transitionType,
+        duration,
+      });
+
+      // Socket.IO Room 변경
+      if (fromNodeKey) socket.leave(fromNodeKey);
+      socket.join(toNodeKey);
+
+      // 입장한 방의 메시지 기록 전송
+      const history = await Message.find({ nodeId: toNode._id })
+        .sort({ createdAt: 1 })
+        .limit(50)
+        .populate("userId", "nickname"); // userId를 이용해 User 컬렉션에서 nickname을 가져옴
+
+      const formattedHistory = history.map((msg) => ({
+        text: msg.text,
+        userId: msg.userId._id,
+        senderNickname: msg.userId.nickname,
+        createdAt: msg.createdAt,
+      }));
+      socket.emit("history", formattedHistory);
+    } catch (error) {
+      console.error("[에러] 노드 입장 및 전환 기록 실패:", error);
+    }
   });
 
-  // 손님이 전화를 끊으면 ('disconnect') 자동으로 실행될 로직
+  // 메시지 전송
+  socket.on("sendMessage", async ({ userId, nodeKey, text }) => {
+    try {
+      const node = await Node.findOne({ roomKey: nodeKey });
+      if (!userId || !node) return;
+
+      // 새 메시지를 DB에 저장
+      const newMessage = await Message.create({
+        nodeId: node._id,
+        userId,
+        text,
+      });
+
+      // Node 통계 업데이트
+      await Node.updateOne(
+        { _id: node._id },
+        { $inc: { messageCount: 1 }, $set: { lastActivityAt: new Date() } }
+      );
+
+      const user = await User.findById(userId);
+
+      // 방에 있는 모든 클라이언트에게 메시지 전송
+      io.to(nodeKey).emit("receiveMessage", {
+        text: newMessage.text,
+        userId: user._id,
+        senderNickname: user.nickname,
+        createdAt: newMessage.createdAt,
+      });
+    } catch (error) {
+      console.error("[에러] 메시지 전송 실패:", error);
+    }
+  });
+
+  // 추천 노드 검색
+  socket.on("getRecommendation", async ({ roomKey }) => {
+    try {
+      const recommendation = await Node.aggregate([
+        { $match: { roomKey: { $ne: roomKey } } },
+        { $sample: { size: 1 } },
+      ]);
+      if (recommendation.length > 0) {
+        socket.emit("recommendationResult", {
+          recommendedKey: recommendation[0].roomKey,
+        });
+      }
+    } catch (error) {
+      console.error("[에러] 추천 노드 검색 실패:", error);
+    }
+  });
+
+  // 연결 종료
   socket.on("disconnect", () => {
-    console.log(`[연결 종료] 손님 전화 끊김: ${socket.id}`);
+    console.log(`[연결 종료] 유저 연결 끊김: ${socket.id}`);
   });
 });
 
-// 서버가 요청을 기다리도록(listen) 설정합니다.
+// --- 4. 서버 실행 ---
 const PORT = process.env.PORT || 3001;
-
 server.listen(PORT, () => {
   console.log(`🚀 서버가 ${PORT}번 포트에서 실행 중입니다.`);
 });
