@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>비밀 코드 채팅</title>
+    <style>
+      :root {
+        --primary-color: #007bff;
+        --light-gray: #f8f9fa;
+        --border-color: #dee2e6;
+        --text-color: #333;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        margin: 0;
+        background-color: var(--light-gray);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: var(--text-color);
+      }
+      .container {
+        width: 100%;
+        max-width: 400px;
+        height: 90vh;
+        max-height: 700px;
+        background-color: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* --- 입장 화면 --- */
+      #entry-screen {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 40px;
+        text-align: center;
+        height: 100%;
+      }
+      #entry-screen h1 {
+        font-size: 24px;
+        margin-bottom: 10px;
+      }
+      #entry-screen p {
+        color: #6c757d;
+        margin-bottom: 30px;
+      }
+      #room-key-input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-size: 16px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      #entry-button {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background-color: var(--primary-color);
+        color: white;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      #entry-button:hover {
+        background-color: #0056b3;
+      }
+      .disclaimer {
+        font-size: 12px;
+        color: #aaa;
+        margin-top: 20px;
+      }
+
+      /* --- 채팅 화면 --- */
+      #chat-screen {
+        display: none; /* 초기에는 숨김 */
+        flex-direction: column;
+        height: 100%;
+      }
+      .chat-header {
+        padding: 15px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      #room-title {
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #leave-button {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      .chat-log {
+        flex-grow: 1;
+        padding: 15px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .message {
+        max-width: 75%;
+        padding: 8px 12px;
+        border-radius: 18px;
+        margin-bottom: 10px;
+        word-wrap: break-word;
+      }
+      .message.sent {
+        background-color: var(--primary-color);
+        color: white;
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+      }
+      .message.received {
+        background-color: #e9ecef;
+        color: var(--text-color);
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+      }
+      .chat-form {
+        display: flex;
+        padding: 15px;
+        border-top: 1px solid var(--border-color);
+      }
+      #message-input {
+        flex-grow: 1;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        margin-right: 10px;
+      }
+      #send-button {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div id="entry-screen">
+        <h1>비밀 코드 채팅 🤫</h1>
+        <p>다른 사람과 똑같은 텍스트를 입력하면<br />채팅방이 열립니다.</p>
+        <input
+          type="text"
+          id="room-key-input"
+          placeholder="여기에 비밀 코드 입력..."
+          autocomplete="off"
+        />
+        <button id="entry-button">채팅 시작</button>
+        <p class="disclaimer">⚠️ 실제 서버가 없는 데모 버전입니다.</p>
+      </div>
+
+      <div id="chat-screen">
+        <div class="chat-header">
+          <span id="room-title"></span>
+          <button id="leave-button">나가기</button>
+        </div>
+        <div class="chat-log" id="chat-log"></div>
+        <form class="chat-form" id="chat-form">
+          <input
+            type="text"
+            id="message-input"
+            placeholder="메시지 입력..."
+            autocomplete="off"
+          />
+          <button type="submit" id="send-button">→</button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      const entryScreen = document.getElementById("entry-screen");
+      const chatScreen = document.getElementById("chat-screen");
+      const entryButton = document.getElementById("entry-button");
+      const leaveButton = document.getElementById("leave-button");
+      const sendButton = document.getElementById("chat-form");
+      const roomKeyInput = document.getElementById("room-key-input");
+      const messageInput = document.getElementById("message-input");
+      const roomTitle = document.getElementById("room-title");
+      const chatLog = document.getElementById("chat-log");
+
+      const STORAGE_KEY = "super-secret-chat-app";
+      let currentRoomKey = null;
+      // 각 브라우저 탭에 고유한 사용자 ID 부여 (간단한 방식)
+      const myUserId = "User-" + Math.random().toString(36).substr(2, 9);
+
+      // 채팅방 입장
+      function joinChat() {
+        const roomKey = roomKeyInput.value.trim();
+        if (!roomKey) {
+          alert("비밀 코드를 입력해주세요!");
+          return;
+        }
+        currentRoomKey = roomKey;
+        roomTitle.textContent = `🔒 ${roomKey}`;
+
+        entryScreen.style.display = "none";
+        chatScreen.style.display = "flex";
+
+        loadMessages();
+        roomKeyInput.value = "";
+      }
+
+      // 채팅방 나가기
+      function leaveChat() {
+        currentRoomKey = null;
+        chatScreen.style.display = "none";
+        entryScreen.style.display = "flex";
+        chatLog.innerHTML = "";
+      }
+
+      // 메시지 불러오기
+      function loadMessages() {
+        chatLog.innerHTML = "";
+        const allMessages = getAllMessages();
+        const roomMessages = allMessages.filter(
+          (msg) => msg.room === currentRoomKey
+        );
+        roomMessages.forEach(addMessageToLog);
+        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+
+      // 메시지를 화면에 추가
+      function addMessageToLog(message) {
+        const msgDiv = document.createElement("div");
+        msgDiv.classList.add("message");
+        msgDiv.textContent = message.text;
+
+        if (message.sender === myUserId) {
+          msgDiv.classList.add("sent");
+        } else {
+          msgDiv.classList.add("received");
+        }
+        chatLog.appendChild(msgDiv);
+      }
+
+      // 메시지 전송
+      function sendMessage(event) {
+        event.preventDefault();
+        const text = messageInput.value.trim();
+        if (!text || !currentRoomKey) return;
+
+        const message = {
+          id: Date.now() + myUserId,
+          room: currentRoomKey,
+          sender: myUserId,
+          text: text,
+        };
+
+        const allMessages = getAllMessages();
+        allMessages.push(message);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(allMessages));
+
+        addMessageToLog(message);
+        chatLog.scrollTop = chatLog.scrollHeight;
+        messageInput.value = "";
+      }
+
+      // 모든 메시지 가져오기 (localStorage에서)
+      function getAllMessages() {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : [];
+      }
+
+      // localStorage 변경 감지 (다른 탭에서 보낸 메시지 수신)
+      window.addEventListener("storage", (event) => {
+        if (event.key === STORAGE_KEY && currentRoomKey) {
+          loadMessages();
+        }
+      });
+
+      entryButton.addEventListener("click", joinChat);
+      roomKeyInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") joinChat();
+      });
+      leaveButton.addEventListener("click", leaveChat);
+      sendButton.addEventListener("submit", sendMessage);
+    </script>
+  </body>
+</html>
