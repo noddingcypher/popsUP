@@ -28,12 +28,12 @@ mongoose
   .then(() => console.log("✅ MongoDB에 성공적으로 연결되었습니다."))
   .catch((err) => console.error("❌ MongoDB 연결 실패:", err));
 
-// --- 데이터베이스 스키마(설계도) 정의 ---
 const messageSchema = new mongoose.Schema({
   roomKey: String,
   sender: { id: String, nickname: String },
   text: String,
   timestamp: { type: Date, default: Date.now },
+  nextNodeKey: { type: String, default: null }, // 다음 노드 키를 저장할 필드 추가
 });
 const Message = mongoose.model("Message", messageSchema);
 
@@ -56,11 +56,11 @@ io.on("connection", (socket) => {
   });
 
   // 손님이 'sendMessage'(주문할게요) 이라고 말하면 실행될 로직
-  socket.on("sendMessage", async ({ roomKey, sender, text }) => {
-    const newMessage = new Message({ roomKey, sender, text }); // 새 주문서(메시지) 생성
-    const savedMessage = await newMessage.save(); // 주문서를 주방 장부(DB)에 저장
+  socket.on("sendMessage", async ({ roomKey, sender, text, nextNodeKey }) => {
+    // nextNodeKey 추가
+    const newMessage = new Message({ roomKey, sender, text, nextNodeKey }); // nextNodeKey 추가
+    const savedMessage = await newMessage.save();
 
-    // 해당 방에 있는 모든 손님에게 'receiveMessage'(새로운 주문 나왔어요) 라고 외침
     io.to(roomKey).emit("receiveMessage", savedMessage);
   });
 
