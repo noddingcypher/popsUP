@@ -5,32 +5,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>비밀 코드 채팅</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link
+      rel="stylesheet"
+      as="style"
+      crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
+    />
     <style>
       :root {
-        --primary-color: #007bff;
-        --light-gray: #f8f9fa;
-        --border-color: #dee2e6;
-        --text-color: #333;
+        --background-color: #f0f2f5;
+        --container-bg: #ffffff;
+        --primary-accent: #6c5ce7;
+        --secondary-accent: #a29bfe;
+        --sent-bubble-bg: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+        --received-bubble-bg: #e4e6eb;
+        --text-primary: #1c1e21;
+        --text-secondary: #65676b;
+        --border-color: #ced0d4;
+        --header-bg: #ffffff;
       }
+
+      @font-face {
+        font-family: "Pretendard";
+        src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css")
+          format("woff2");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, sans-serif;
+        font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial, sans-serif;
         margin: 0;
-        background-color: var(--light-gray);
+        background-color: var(--background-color);
         display: flex;
         justify-content: center;
         align-items: center;
         height: 100vh;
-        color: var(--text-color);
+        color: var(--text-primary);
       }
       .container {
         width: 100%;
         max-width: 400px;
-        height: 90vh;
-        max-height: 700px;
-        background-color: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        height: 95vh;
+        max-height: 800px;
+        background-color: var(--container-bg);
+        border-radius: 24px;
+        box-shadow: 0 12px 28px 0 rgba(0, 0, 0, 0.2),
+          0 2px 4px 0 rgba(0, 0, 0, 0.1);
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -45,140 +71,185 @@
         padding: 40px;
         text-align: center;
         height: 100%;
+        background: linear-gradient(120deg, #a29bfe 0%, #d6a2e8 100%);
+        color: white;
       }
       #entry-screen h1 {
-        font-size: 24px;
-        margin-bottom: 10px;
+        font-size: 28px;
+        margin-bottom: 15px;
+        font-weight: 600;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
       }
       #entry-screen p {
-        color: #6c757d;
-        margin-bottom: 30px;
+        color: rgba(255, 255, 255, 0.85);
+        margin-bottom: 40px;
       }
       #room-key-input {
         width: 100%;
-        padding: 12px;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
+        padding: 15px;
+        border: none;
+        border-radius: 12px;
         font-size: 16px;
         margin-bottom: 20px;
         text-align: center;
+        background-color: rgba(255, 255, 255, 0.2);
+        color: white;
+        transition: background-color 0.3s;
+      }
+      #room-key-input::placeholder {
+        color: rgba(255, 255, 255, 0.7);
+      }
+      #room-key-input:focus {
+        outline: none;
+        background-color: rgba(255, 255, 255, 0.3);
       }
       #entry-button {
         width: 100%;
-        padding: 12px;
+        padding: 15px;
         border: none;
-        border-radius: 8px;
-        background-color: var(--primary-color);
-        color: white;
+        border-radius: 12px;
+        background-color: white;
+        color: var(--primary-accent);
         font-size: 16px;
         font-weight: bold;
         cursor: pointer;
-        transition: background-color 0.2s;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
       }
       #entry-button:hover {
-        background-color: #0056b3;
+        transform: translateY(-2px);
       }
 
       /* --- 채팅 화면 --- */
       #chat-screen {
-        display: none; /* 초기에는 숨김 */
+        display: none;
         flex-direction: column;
         height: 100%;
       }
       .chat-header {
-        padding: 15px;
-        border-bottom: 1px solid var(--border-color);
+        padding: 15px 20px;
+        background-color: var(--header-bg);
+        border-bottom: 1px solid #f0f0f0;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        z-index: 10;
       }
       #room-title {
-        font-weight: bold;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        font-weight: 600;
+        font-size: 18px;
       }
       #leave-button {
-        background: #dc3545;
-        color: white;
+        background: transparent;
+        color: var(--text-secondary);
         border: none;
         padding: 5px 10px;
-        border-radius: 5px;
+        border-radius: 8px;
         cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background-color 0.2s, color 0.2s;
+      }
+      #leave-button:hover {
+        background-color: #f0f0f0;
+        color: #d63031;
       }
       .chat-log {
         flex-grow: 1;
-        padding: 15px;
+        padding: 20px 15px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
+        gap: 12px;
+        background-color: #f7f7f7;
       }
       .message {
-        max-width: 75%;
-        padding: 8px 12px;
-        border-radius: 18px;
-        margin-bottom: 10px;
+        max-width: 70%;
+        padding: 10px 15px;
+        border-radius: 20px;
         word-wrap: break-word;
+        line-height: 1.5;
+        position: relative;
       }
       .message.sent {
-        background-color: var(--primary-color);
+        background: var(--sent-bubble-bg);
         color: white;
         align-self: flex-end;
-        border-bottom-right-radius: 4px;
+        border-bottom-right-radius: 5px;
       }
       .message.received {
-        background-color: #e9ecef;
-        color: var(--text-color);
+        background: var(--received-bubble-bg);
+        color: var(--text-primary);
         align-self: flex-start;
-        border-bottom-left-radius: 4px;
+        border-bottom-left-radius: 5px;
       }
       .chat-form {
         display: flex;
         padding: 15px;
-        border-top: 1px solid var(--border-color);
+        border-top: 1px solid #f0f0f0;
+        background-color: #fff;
         align-items: center;
+        gap: 10px;
       }
       #message-input,
       #next-node-input {
-        padding: 10px;
-        border: 1px solid var(--border-color);
-        border-radius: 20px;
+        padding: 12px 18px;
+        border: none;
+        border-radius: 22px;
+        background-color: #f0f2f5;
+        font-size: 15px;
+      }
+      #message-input:focus,
+      #next-node-input:focus {
+        outline: none;
       }
       #message-input {
         flex-grow: 1;
       }
       #next-node-input {
-        width: 35%;
-        margin-left: 5px;
+        width: 30%;
       }
       #send-button,
       #goto-node-button {
-        background: var(--primary-color);
+        background: var(--primary-accent);
         color: white;
         border: none;
-        border-radius: 20px;
-        padding: 0 15px;
-        margin-left: 5px;
+        border-radius: 50%;
         cursor: pointer;
-        height: 40px; /* 입력창과 높이 맞춤 */
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+        font-size: 18px;
+        transition: transform 0.2s;
+        display: flex;
+        justify-content: center;
+        align-items: center;
       }
-      #send-button {
-        min-width: 40px;
+      #send-button:hover,
+      #goto-node-button:hover {
+        transform: scale(1.1);
+      }
+      #goto-node-button {
+        font-size: 14px;
+        border-radius: 22px;
+        width: auto;
+        padding: 0 15px;
       }
     </style>
   </head>
   <body>
     <div class="container">
       <div id="entry-screen">
-        <h1>비밀 코드 채팅 🤫</h1>
-        <p>다른 사람과 똑같은 텍스트를 입력하면<br />채팅방이 열립니다.</p>
+        <h1>Node Chat 🤫</h1>
+        <p>비밀 코드를 입력하여<br />노드에 접속하세요.</p>
         <input
           type="text"
           id="room-key-input"
-          placeholder="여기에 비밀 코드 입력..."
+          placeholder="비밀 코드..."
           autocomplete="off"
         />
-        <button id="entry-button">채팅 시작</button>
+        <button id="entry-button">접속</button>
       </div>
 
       <div id="chat-screen">
@@ -191,15 +262,15 @@
           <input
             type="text"
             id="message-input"
-            placeholder="메시지 입력..."
+            placeholder="메시지..."
             autocomplete="off"
           />
-          <button id="send-button">→</button>
+          <button id="send-button">➤</button>
 
           <input
             type="text"
             id="next-node-input"
-            placeholder="이동할 노드 키"
+            placeholder="이동할 노드"
             autocomplete="off"
           />
           <button id="goto-node-button">이동</button>
@@ -228,8 +299,6 @@
       const myNickname = "User-" + Math.random().toString(36).substr(2, 4);
 
       // --- 3. 핵심 함수들 ---
-
-      // 특정 노드(채팅방)로 이동하는 함수
       function goToNode(nodeKey) {
         if (!nodeKey) return;
 
@@ -238,8 +307,6 @@
         socket.emit("joinRoom", { roomKey: nodeKey });
         roomTitle.textContent = `🔒 ${nodeKey}`;
       }
-
-      // 채팅방 입장 함수
       function joinChat() {
         const roomKey = roomKeyInput.value.trim();
         if (!roomKey) {
@@ -251,16 +318,12 @@
         chatScreen.style.display = "flex";
         roomKeyInput.value = "";
       }
-
-      // 채팅방 나가기 함수
       function leaveChat() {
         currentRoomKey = null;
         chatScreen.style.display = "none";
         entryScreen.style.display = "flex";
         chatLog.innerHTML = "";
       }
-
-      // 메시지를 화면에 추가하는 함수
       function addMessageToLog(message) {
         const msgDiv = document.createElement("div");
         msgDiv.classList.add("message");
@@ -276,8 +339,6 @@
         chatLog.appendChild(msgDiv);
         chatLog.scrollTop = chatLog.scrollHeight;
       }
-
-      // 메시지 전송 함수
       function sendMessage() {
         const text = messageInput.value.trim();
         if (!text || !currentRoomKey) return;
@@ -297,7 +358,6 @@
         chatLog.innerHTML = "";
         messages.forEach(addMessageToLog);
       });
-
       socket.on("receiveMessage", (message) => {
         addMessageToLog(message);
       });
@@ -307,15 +367,11 @@
       roomKeyInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") joinChat();
       });
-
       leaveButton.addEventListener("click", leaveChat);
-
       sendButton.addEventListener("click", sendMessage);
       messageInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") sendMessage();
       });
-
-      // 새로 추가된 '이동' 버튼의 이벤트 핸들러
       gotoNodeButton.addEventListener("click", () => {
         const nodeKey = nextNodeInput.value.trim();
         goToNode(nodeKey);
