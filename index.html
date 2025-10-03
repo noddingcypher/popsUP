@@ -159,6 +159,13 @@
         font-size: 18px;
         cursor: pointer;
       }
+      #next-node-input {
+        width: 35%; /* 너비 조절 */
+        margin-left: 5px;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+      }
     </style>
   </head>
   <body>
@@ -189,45 +196,52 @@
             placeholder="메시지 입력..."
             autocomplete="off"
           />
+          <input
+            type="text"
+            id="next-node-input"
+            placeholder="다음 노드 키 (선택)"
+            autocomplete="off"
+          />
           <button type="submit" id="send-button">→</button>
         </form>
       </div>
     </div>
 
     <script>
-      // --- 1. 기본 요소 가져오기 (이 부분은 동일합니다) ---
+      // --- 1. 기본 요소 가져오기 ---
       const entryScreen = document.getElementById("entry-screen");
       const chatScreen = document.getElementById("chat-screen");
       const entryButton = document.getElementById("entry-button");
       const leaveButton = document.getElementById("leave-button");
-      const chatForm = document.getElementById("chat-form"); // form 자체를 가져옵니다.
+      const chatForm = document.getElementById("chat-form");
       const roomKeyInput = document.getElementById("room-key-input");
       const messageInput = document.getElementById("message-input");
+      const nextNodeInput = document.getElementById("next-node-input"); // 새로 추가된 입력창
       const roomTitle = document.getElementById("room-title");
       const chatLog = document.getElementById("chat-log");
 
       // --- 2. 서버에 연결하고 변수 설정하기 ---
-      // Render에서 받은 실제 백엔드 서버 주소를 여기에 꼭 입력하세요!
-      const socket = io("https://popsup.onrender.com");
+      const socket = io("https://<your-render-service-name>.onrender.com"); // 본인 서버 주소로 변경!
 
       let currentRoomKey = null;
-      const myNickname = "User-" + Math.random().toString(36).substr(2, 4); // 간단한 익명 닉네임
+      const myNickname = "User-" + Math.random().toString(36).substr(2, 4);
 
-      // --- 3. 서버와 통신하는 함수들 ---
+      // --- 3. 핵심 함수들 ---
 
-      // 채팅방 입장 함수
+      // 특정 노드(채팅방)로 이동하는 새 함수
+      function goToNode(nodeKey) {
+        if (!nodeKey) return;
+
+        currentRoomKey = nodeKey;
+        chatLog.innerHTML = ""; // 채팅 로그 비우기
+        socket.emit("joinRoom", { roomKey: nodeKey }); // 새 방에 입장
+        roomTitle.textContent = `🔒 ${nodeKey}`;
+      }
+
+      // 채팅방 입장 함수 (초기 입장 시 사용)
       function joinChat() {
         const roomKey = roomKeyInput.value.trim();
-        if (!roomKey) {
-          alert("비밀 코드를 입력해주세요!");
-          return;
-        }
-        currentRoomKey = roomKey;
-
-        // 서버에게 'joinRoom' 이벤트를 보냅니다.
-        socket.emit("joinRoom", { roomKey });
-
-        roomTitle.textContent = `🔒 ${roomKey}`;
+        goToNode(roomKey); // goToNode 함수 재사용
         entryScreen.style.display = "none";
         chatScreen.style.display = "flex";
         roomKeyInput.value = "";
@@ -235,67 +249,77 @@
 
       // 채팅방 나가기 함수
       function leaveChat() {
-        // 서버에게 나간다는 것을 알릴 필요는 없지만, 원한다면 이벤트를 추가할 수 있습니다.
         currentRoomKey = null;
         chatScreen.style.display = "none";
         entryScreen.style.display = "flex";
-        chatLog.innerHTML = ""; // 채팅 기록을 비웁니다.
+        chatLog.innerHTML = "";
       }
 
-      // 메시지를 화면에 추가하는 함수 (서버 데이터 구조에 맞게 수정)
+      // 메시지를 화면에 추가하는 함수 (버튼 생성 로직 추가)
       function addMessageToLog(message) {
         const msgDiv = document.createElement("div");
         msgDiv.classList.add("message");
 
-        // 내가 보낸 메시지인지 확인 (socket.id는 소켓 연결마다 고유한 ID)
+        const msgText = document.createElement("span"); // 메시지 텍스트 부분
+
         if (message.sender.id === socket.id) {
           msgDiv.classList.add("sent");
-          msgDiv.textContent = message.text;
+          msgText.textContent = message.text;
         } else {
           msgDiv.classList.add("received");
-          // 다른 사람이 보낸 메시지는 닉네임과 함께 표시
-          msgDiv.textContent = `[${message.sender.nickname}] ${message.text}`;
+          msgText.textContent = `[${message.sender.nickname}] ${message.text}`;
+        }
+
+        msgDiv.appendChild(msgText);
+
+        // 'nextNodeKey'가 존재하면 버튼을 생성합니다.
+        if (message.nextNodeKey) {
+          const nextNodeButton = document.createElement("button");
+          nextNodeButton.textContent = "→ 다음 노드로";
+          nextNodeButton.style.marginLeft = "10px";
+          nextNodeButton.style.cursor = "pointer";
+          nextNodeButton.onclick = () => {
+            goToNode(message.nextNodeKey);
+          };
+          msgDiv.appendChild(nextNodeButton);
         }
 
         chatLog.appendChild(msgDiv);
-        chatLog.scrollTop = chatLog.scrollHeight; // 항상 맨 아래로 스크롤
+        chatLog.scrollTop = chatLog.scrollHeight;
       }
 
-      // 메시지 전송 함수
+      // 메시지 전송 함수 (nextNodeKey 전송 로직 추가)
       function sendMessage(event) {
         event.preventDefault();
         const text = messageInput.value.trim();
         if (!text || !currentRoomKey) return;
 
+        const nextNodeKey = nextNodeInput.value.trim();
+
         const messageData = {
           roomKey: currentRoomKey,
-          sender: {
-            id: socket.id,
-            nickname: myNickname,
-          },
+          sender: { id: socket.id, nickname: myNickname },
           text: text,
+          nextNodeKey: nextNodeKey || null, // 값이 있으면 보내고, 없으면 null
         };
 
-        // 더 이상 localStorage에 저장하지 않고, 서버로 'sendMessage' 이벤트를 보냅니다.
         socket.emit("sendMessage", messageData);
 
         messageInput.value = "";
+        nextNodeInput.value = ""; // 입력창 비우기
       }
 
       // --- 4. 서버로부터 오는 이벤트 듣기 ---
-
-      // 서버로부터 이전 대화 기록을 받습니다.
       socket.on("history", (messages) => {
-        chatLog.innerHTML = ""; // 기존 로그를 비우고
-        messages.forEach(addMessageToLog); // 받은 기록을 모두 화면에 표시
+        chatLog.innerHTML = "";
+        messages.forEach(addMessageToLog);
       });
 
-      // 서버로부터 새로운 메시지를 실시간으로 받습니다.
       socket.on("receiveMessage", (message) => {
         addMessageToLog(message);
       });
 
-      // --- 5. 이벤트 핸들러 연결 (이 부분은 거의 동일) ---
+      // --- 5. 이벤트 핸들러 연결 ---
       entryButton.addEventListener("click", joinChat);
       roomKeyInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") joinChat();
