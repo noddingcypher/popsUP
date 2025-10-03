@@ -12,6 +12,7 @@
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
     />
     <style>
+      /* CSS 스타일은 이전과 동일하게 유지됩니다. */
       :root {
         --background-color: #f0f2f5;
         --container-bg: #ffffff;
@@ -24,19 +25,6 @@
         --border-color: #ced0d4;
         --header-bg: #ffffff;
       }
-
-      @font-face {
-        font-family: "Pretendard";
-        src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css")
-          format("woff2");
-        font-weight: normal;
-        font-style: normal;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
       body {
         font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI",
           Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -61,8 +49,6 @@
         flex-direction: column;
         overflow: hidden;
       }
-
-      /* --- 입장 화면 --- */
       #entry-screen {
         display: flex;
         flex-direction: column;
@@ -84,22 +70,27 @@
         color: rgba(255, 255, 255, 0.85);
         margin-bottom: 40px;
       }
-      #room-key-input {
+      #room-key-input,
+      #nickname-input {
         width: 100%;
         padding: 15px;
         border: none;
         border-radius: 12px;
         font-size: 16px;
-        margin-bottom: 20px;
         text-align: center;
         background-color: rgba(255, 255, 255, 0.2);
         color: white;
         transition: background-color 0.3s;
       }
-      #room-key-input::placeholder {
+      #room-key-input {
+        margin-bottom: 20px;
+      }
+      #room-key-input::placeholder,
+      #nickname-input::placeholder {
         color: rgba(255, 255, 255, 0.7);
       }
-      #room-key-input:focus {
+      #room-key-input:focus,
+      #nickname-input:focus {
         outline: none;
         background-color: rgba(255, 255, 255, 0.3);
       }
@@ -127,21 +118,6 @@
       }
       #nickname-input {
         flex-grow: 1;
-        padding: 15px;
-        border: none;
-        border-radius: 12px;
-        font-size: 16px;
-        text-align: center;
-        background-color: rgba(255, 255, 255, 0.2);
-        color: white;
-        transition: background-color 0.3s;
-      }
-      #nickname-input::placeholder {
-        color: rgba(255, 255, 255, 0.7);
-      }
-      #nickname-input:focus {
-        outline: none;
-        background-color: rgba(255, 255, 255, 0.3);
       }
       #regen-nickname-btn {
         flex-shrink: 0;
@@ -157,8 +133,6 @@
       #regen-nickname-btn:hover {
         transform: rotate(90deg);
       }
-
-      /* --- 채팅 화면 --- */
       #chat-screen {
         display: none;
         flex-direction: column;
@@ -339,7 +313,6 @@
     </div>
 
     <script>
-      // --- 1. 기본 요소 가져오기 ---
       const nicknameInput = document.getElementById("nickname-input");
       const regenNicknameBtn = document.getElementById("regen-nickname-btn");
       const entryScreen = document.getElementById("entry-screen");
@@ -353,13 +326,11 @@
       const chatLog = document.getElementById("chat-log");
       const recommendBtn = document.getElementById("recommend-btn");
 
-      // --- 2. 서버 연결 및 상태 변수 ---
       const socket = io("https://popsup.onrender.com");
       let currentUser = { id: null, nickname: null };
       let currentRoomKey = null;
       let nodeEntryTime = null;
 
-      // --- 3. 닉네임 생성 기능 ---
       const adjectives = [
         "용감한",
         "슬기로운",
@@ -385,8 +356,6 @@
         const noun = nouns[Math.floor(Math.random() * nouns.length)];
         return `${adj} ${noun}`;
       }
-
-      // --- 4. 사용자 정보 관리 ---
       function setupInitialNickname() {
         let storedNickname = localStorage.getItem("userNickname");
         if (storedNickname) {
@@ -396,7 +365,6 @@
         }
       }
 
-      // --- 5. 핵심 함수들 ---
       function goToNode(nodeKey, transitionType) {
         if (!nodeKey) return;
         const duration = nodeEntryTime
@@ -417,29 +385,22 @@
         recommendBtn.style.display = "none";
         socket.emit("getRecommendation", { roomKey: nodeKey });
       }
+
+      // ✨ 핵심 수정: joinChat 함수 로직 변경
       function joinChat() {
         const nickname = nicknameInput.value.trim();
         const roomKey = roomKeyInput.value.trim();
-        if (!nickname) {
-          alert("닉네임을 입력해주세요!");
-          return;
-        }
-        if (nickname.length > 10) {
-          alert("닉네임은 10자 이하로 설정해주세요.");
-          return;
-        }
-        if (!roomKey) {
-          alert("비밀 코드를 입력해주세요!");
+        if (!nickname || nickname.length > 10 || !roomKey) {
+          alert("닉네임(10자 이하)과 비밀 코드를 모두 올바르게 입력해주세요.");
           return;
         }
         currentUser.nickname = nickname;
         localStorage.setItem("userNickname", nickname);
+
+        // 닉네임 설정을 먼저 서버에 보내고, 응답을 받은 후 방에 입장합니다.
         socket.emit("userSetup", { nickname: currentUser.nickname });
-        goToNode(roomKey, "INITIAL");
-        entryScreen.style.display = "none";
-        chatScreen.style.display = "flex";
-        roomKeyInput.value = "";
       }
+
       function leaveChat() {
         currentRoomKey = null;
         nodeEntryTime = null;
@@ -485,12 +446,22 @@
         messageInput.value = "";
       }
 
-      // --- 6. 서버로부터 오는 이벤트 듣기 ---
+      // ✨ 핵심 수정: sessionEstablished 리스너 로직 변경
       socket.on("sessionEstablished", ({ userId, nickname }) => {
         currentUser.id = userId;
         currentUser.nickname = nickname;
         console.log("세션 연결 완료:", currentUser);
+
+        // 세션이 성공적으로 수립된 후에만 방 입장 로직을 실행합니다.
+        if (entryScreen.style.display !== "none") {
+          const roomKey = roomKeyInput.value.trim();
+          goToNode(roomKey, "INITIAL");
+          entryScreen.style.display = "none";
+          chatScreen.style.display = "flex";
+          roomKeyInput.value = "";
+        }
       });
+
       socket.on("history", (messages) => {
         chatLog.innerHTML = "";
         messages.forEach(addMessageToLog);
@@ -509,7 +480,6 @@
         }
       });
 
-      // --- 7. 이벤트 핸들러 연결 및 초기 설정 ---
       entryButton.addEventListener("click", joinChat);
       roomKeyInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") joinChat();
