@@ -220,7 +220,7 @@
       const chatLog = document.getElementById("chat-log");
 
       // --- 2. 서버에 연결하고 변수 설정하기 ---
-      const socket = io("https://<your-render-service-name>.onrender.com"); // 본인 서버 주소로 변경!
+      const socket = io("https://popsup.onrender.com"); // 본인 서버 주소로 변경!
 
       let currentRoomKey = null;
       const myNickname = "User-" + Math.random().toString(36).substr(2, 4);
