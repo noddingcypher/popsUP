@@ -313,6 +313,7 @@
     </div>
 
     <script>
+      // --- 1. 기본 요소 가져오기 (이전과 동일) ---
       const nicknameInput = document.getElementById("nickname-input");
       const regenNicknameBtn = document.getElementById("regen-nickname-btn");
       const entryScreen = document.getElementById("entry-screen");
@@ -326,11 +327,13 @@
       const chatLog = document.getElementById("chat-log");
       const recommendBtn = document.getElementById("recommend-btn");
 
+      // --- 2. 서버 연결 및 상태 변수 ---
       const socket = io("https://popsup.onrender.com");
-      let currentUser = { id: null, nickname: null };
+      let currentUser = { id: null, localId: null, nickname: null };
       let currentRoomKey = null;
       let nodeEntryTime = null;
 
+      // --- 3. 닉네임 생성 및 사용자 식별자(localId) 설정 ---
       const adjectives = [
         "용감한",
         "슬기로운",
@@ -351,22 +354,52 @@
         "이순신",
         "김연아",
       ];
+
       function generateRandomNickname() {
         const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
         const noun = nouns[Math.floor(Math.random() * nouns.length)];
         return `${adj} ${noun}`;
       }
-      function setupInitialNickname() {
-        let storedNickname = localStorage.getItem("userNickname");
-        if (storedNickname) {
-          nicknameInput.value = storedNickname;
-        } else {
-          nicknameInput.value = generateRandomNickname();
+
+      // ✨ 핵심 수정: 사용자 고유 식별자(localId) 설정 함수
+      function setupUserIdentity() {
+        let localId = localStorage.getItem("userLocalId");
+        if (!localId) {
+          localId = "user_" + Math.random().toString(36).substr(2, 16);
+          localStorage.setItem("userLocalId", localId);
         }
+        currentUser.localId = localId;
+
+        let storedNickname = localStorage.getItem("userNickname");
+        nicknameInput.value = storedNickname
+          ? storedNickname
+          : generateRandomNickname();
       }
 
+      // --- 4. 핵심 함수들 ---
+
+      // ✨ 핵심 수정: joinChat 함수 로직 변경
+      function joinChat() {
+        const nickname = nicknameInput.value.trim();
+        const roomKey = roomKeyInput.value.trim();
+
+        if (!nickname || nickname.length > 10 || !roomKey) {
+          alert("닉네임(10자 이하)과 비밀 코드를 모두 올바르게 입력해주세요.");
+          return;
+        }
+        currentUser.nickname = nickname;
+        localStorage.setItem("userNickname", nickname);
+
+        // localId와 닉네임을 함께 보내 세션을 수립합니다.
+        socket.emit("userSetup", {
+          localId: currentUser.localId,
+          nickname: currentUser.nickname,
+        });
+      }
+
+      // ... goToNode, leaveChat 등 나머지 함수들은 이전 최종 버전과 동일 ...
       function goToNode(nodeKey, transitionType) {
-        if (!nodeKey) return;
+        if (!nodeKey || !currentUser.id) return; // currentUser.id가 없으면 실행 안 함
         const duration = nodeEntryTime
           ? Math.round((Date.now() - nodeEntryTime) / 1000)
           : 0;
@@ -385,22 +418,6 @@
         recommendBtn.style.display = "none";
         socket.emit("getRecommendation", { roomKey: nodeKey });
       }
-
-      // ✨ 핵심 수정: joinChat 함수 로직 변경
-      function joinChat() {
-        const nickname = nicknameInput.value.trim();
-        const roomKey = roomKeyInput.value.trim();
-        if (!nickname || nickname.length > 10 || !roomKey) {
-          alert("닉네임(10자 이하)과 비밀 코드를 모두 올바르게 입력해주세요.");
-          return;
-        }
-        currentUser.nickname = nickname;
-        localStorage.setItem("userNickname", nickname);
-
-        // 닉네임 설정을 먼저 서버에 보내고, 응답을 받은 후 방에 입장합니다.
-        socket.emit("userSetup", { nickname: currentUser.nickname });
-      }
-
       function leaveChat() {
         currentRoomKey = null;
         nodeEntryTime = null;
@@ -446,6 +463,8 @@
         messageInput.value = "";
       }
 
+      // --- 5. 서버로부터 오는 이벤트 듣기 ---
+
       // ✨ 핵심 수정: sessionEstablished 리스너 로직 변경
       socket.on("sessionEstablished", ({ userId, nickname }) => {
         currentUser.id = userId;
@@ -462,6 +481,7 @@
         }
       });
 
+      // ... 나머지 이벤트 리스너는 이전 최종 버전과 동일 ...
       socket.on("history", (messages) => {
         chatLog.innerHTML = "";
         messages.forEach(addMessageToLog);
@@ -480,6 +500,7 @@
         }
       });
 
+      // --- 6. 이벤트 핸들러 연결 및 초기 설정 ---
       entryButton.addEventListener("click", joinChat);
       roomKeyInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") joinChat();
@@ -492,7 +513,9 @@
       regenNicknameBtn.addEventListener("click", () => {
         nicknameInput.value = generateRandomNickname();
       });
-      setupInitialNickname();
+
+      // 페이지가 로드되면 사용자의 고유 식별자와 닉네임을 설정합니다.
+      setupUserIdentity();
     </script>
   </body>
 </html>

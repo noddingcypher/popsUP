@@ -31,7 +31,8 @@ mongoose
 
 // Users 스키마
 const userSchema = new mongoose.Schema({
-  nickname: { type: String, unique: true },
+  localId: { type: String, unique: true, required: true }, // 브라우저마다 고유한 ID
+  nickname: String, // 더 이상 unique가 아님
   createdAt: { type: Date, default: Date.now },
   lastSeenAt: { type: Date, default: Date.now },
 });
@@ -81,18 +82,18 @@ io.on("connection", (socket) => {
   console.log(`[연결] 새로운 유저 접속: ${socket.id}`);
 
   // 사용자 정보 설정 (최초 연결 시)
-  socket.on("userSetup", async ({ nickname }) => {
+  socket.on("userSetup", async ({ localId, nickname }) => {
     try {
-      // 닉네임으로 사용자를 찾거나, 없으면 새로 생성 (upsert)
+      // 이제 localId를 기준으로 사용자를 찾습니다.
       const user = await User.findOneAndUpdate(
-        { nickname: nickname },
+        { localId: localId },
+        // 닉네임은 접속할 때마다 최신 값으로 업데이트합니다.
         {
-          $set: { lastSeenAt: new Date() },
-          $setOnInsert: { nickname: nickname },
+          $set: { nickname: nickname, lastSeenAt: new Date() },
+          $setOnInsert: { localId: localId },
         },
         { upsert: true, new: true }
       );
-      // 클라이언트에게 최종 확정된 사용자 정보를 보내줌
       socket.emit("sessionEstablished", {
         userId: user._id,
         nickname: user.nickname,
