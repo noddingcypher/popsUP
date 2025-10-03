@@ -33,7 +33,6 @@ const messageSchema = new mongoose.Schema({
   sender: { id: String, nickname: String },
   text: String,
   timestamp: { type: Date, default: Date.now },
-  nextNodeKey: { type: String, default: null }, // 다음 노드 키를 저장할 필드 추가
 });
 const Message = mongoose.model("Message", messageSchema);
 
@@ -56,9 +55,8 @@ io.on("connection", (socket) => {
   });
 
   // 손님이 'sendMessage'(주문할게요) 이라고 말하면 실행될 로직
-  socket.on("sendMessage", async ({ roomKey, sender, text, nextNodeKey }) => {
-    // nextNodeKey 추가
-    const newMessage = new Message({ roomKey, sender, text, nextNodeKey }); // nextNodeKey 추가
+  socket.on("sendMessage", async ({ roomKey, sender, text }) => {
+    const newMessage = new Message({ roomKey, sender, text });
     const savedMessage = await newMessage.save();
 
     io.to(roomKey).emit("receiveMessage", savedMessage);
