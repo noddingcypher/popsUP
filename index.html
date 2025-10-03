@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>비밀 코드 채팅</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
       :root {
         --primary-color: #007bff;
@@ -194,22 +195,27 @@
     </div>
 
     <script>
+      // --- 1. 기본 요소 가져오기 (이 부분은 동일합니다) ---
       const entryScreen = document.getElementById("entry-screen");
       const chatScreen = document.getElementById("chat-screen");
       const entryButton = document.getElementById("entry-button");
       const leaveButton = document.getElementById("leave-button");
-      const sendButton = document.getElementById("chat-form");
+      const chatForm = document.getElementById("chat-form"); // form 자체를 가져옵니다.
       const roomKeyInput = document.getElementById("room-key-input");
       const messageInput = document.getElementById("message-input");
       const roomTitle = document.getElementById("room-title");
       const chatLog = document.getElementById("chat-log");
 
-      const STORAGE_KEY = "super-secret-chat-app";
-      let currentRoomKey = null;
-      // 각 브라우저 탭에 고유한 사용자 ID 부여 (간단한 방식)
-      const myUserId = "User-" + Math.random().toString(36).substr(2, 9);
+      // --- 2. 서버에 연결하고 변수 설정하기 ---
+      // Render에서 받은 실제 백엔드 서버 주소를 여기에 꼭 입력하세요!
+      const socket = io("https://popsup.onrender.com");
 
-      // 채팅방 입장
+      let currentRoomKey = null;
+      const myNickname = "User-" + Math.random().toString(36).substr(2, 4); // 간단한 익명 닉네임
+
+      // --- 3. 서버와 통신하는 함수들 ---
+
+      // 채팅방 입장 함수
       function joinChat() {
         const roomKey = roomKeyInput.value.trim();
         if (!roomKey) {
@@ -217,89 +223,85 @@
           return;
         }
         currentRoomKey = roomKey;
-        roomTitle.textContent = `🔒 ${roomKey}`;
 
+        // 서버에게 'joinRoom' 이벤트를 보냅니다.
+        socket.emit("joinRoom", { roomKey });
+
+        roomTitle.textContent = `🔒 ${roomKey}`;
         entryScreen.style.display = "none";
         chatScreen.style.display = "flex";
-
-        loadMessages();
         roomKeyInput.value = "";
       }
 
-      // 채팅방 나가기
+      // 채팅방 나가기 함수
       function leaveChat() {
+        // 서버에게 나간다는 것을 알릴 필요는 없지만, 원한다면 이벤트를 추가할 수 있습니다.
         currentRoomKey = null;
         chatScreen.style.display = "none";
         entryScreen.style.display = "flex";
-        chatLog.innerHTML = "";
+        chatLog.innerHTML = ""; // 채팅 기록을 비웁니다.
       }
 
-      // 메시지 불러오기
-      function loadMessages() {
-        chatLog.innerHTML = "";
-        const allMessages = getAllMessages();
-        const roomMessages = allMessages.filter(
-          (msg) => msg.room === currentRoomKey
-        );
-        roomMessages.forEach(addMessageToLog);
-        chatLog.scrollTop = chatLog.scrollHeight;
-      }
-
-      // 메시지를 화면에 추가
+      // 메시지를 화면에 추가하는 함수 (서버 데이터 구조에 맞게 수정)
       function addMessageToLog(message) {
         const msgDiv = document.createElement("div");
         msgDiv.classList.add("message");
-        msgDiv.textContent = message.text;
 
-        if (message.sender === myUserId) {
+        // 내가 보낸 메시지인지 확인 (socket.id는 소켓 연결마다 고유한 ID)
+        if (message.sender.id === socket.id) {
           msgDiv.classList.add("sent");
+          msgDiv.textContent = message.text;
         } else {
           msgDiv.classList.add("received");
+          // 다른 사람이 보낸 메시지는 닉네임과 함께 표시
+          msgDiv.textContent = `[${message.sender.nickname}] ${message.text}`;
         }
+
         chatLog.appendChild(msgDiv);
+        chatLog.scrollTop = chatLog.scrollHeight; // 항상 맨 아래로 스크롤
       }
 
-      // 메시지 전송
+      // 메시지 전송 함수
       function sendMessage(event) {
         event.preventDefault();
         const text = messageInput.value.trim();
         if (!text || !currentRoomKey) return;
 
-        const message = {
-          id: Date.now() + myUserId,
-          room: currentRoomKey,
-          sender: myUserId,
+        const messageData = {
+          roomKey: currentRoomKey,
+          sender: {
+            id: socket.id,
+            nickname: myNickname,
+          },
           text: text,
         };
 
-        const allMessages = getAllMessages();
-        allMessages.push(message);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(allMessages));
+        // 더 이상 localStorage에 저장하지 않고, 서버로 'sendMessage' 이벤트를 보냅니다.
+        socket.emit("sendMessage", messageData);
 
-        addMessageToLog(message);
-        chatLog.scrollTop = chatLog.scrollHeight;
         messageInput.value = "";
       }
 
-      // 모든 메시지 가져오기 (localStorage에서)
-      function getAllMessages() {
-        const data = localStorage.getItem(STORAGE_KEY);
-        return data ? JSON.parse(data) : [];
-      }
+      // --- 4. 서버로부터 오는 이벤트 듣기 ---
 
-      // localStorage 변경 감지 (다른 탭에서 보낸 메시지 수신)
-      window.addEventListener("storage", (event) => {
-        if (event.key === STORAGE_KEY && currentRoomKey) {
-          loadMessages();
-        }
+      // 서버로부터 이전 대화 기록을 받습니다.
+      socket.on("history", (messages) => {
+        chatLog.innerHTML = ""; // 기존 로그를 비우고
+        messages.forEach(addMessageToLog); // 받은 기록을 모두 화면에 표시
       });
 
+      // 서버로부터 새로운 메시지를 실시간으로 받습니다.
+      socket.on("receiveMessage", (message) => {
+        addMessageToLog(message);
+      });
+
+      // --- 5. 이벤트 핸들러 연결 (이 부분은 거의 동일) ---
       entryButton.addEventListener("click", joinChat);
       roomKeyInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") joinChat();
       });
       leaveButton.addEventListener("click", leaveChat);
-      sendButton.addEventListener("submit", sendMessage);
+      chatForm.addEventListener("submit", sendMessage);
     </script>
   </body>
 </html>
