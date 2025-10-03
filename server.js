@@ -8,6 +8,11 @@ const cors = require("cors"); // CORS 부품 가져오기
 
 // 2. 기본 앱과 서버를 만듭니다.
 const app = express(); // Express 앱 생성 (가스레인지 본체)
+app.use(cors());
+
+app.get("/", (req, res) => {
+  res.send("Hello, this is the chat server!");
+});
 const server = http.createServer(app); // Express 앱으로 HTTP 서버 생성 (가스레인지 점화 장치)
 const io = new Server(server, {
   // 이 부분을 수정
@@ -31,9 +36,6 @@ const messageSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now },
 });
 const Message = mongoose.model("Message", messageSchema);
-
-// 3. 서버를 특정 포트에서 실행하도록 설정합니다.
-const PORT = 3001; // 3001번 포트에서 가게 문을 열기로 결정
 
 // --- Socket.IO 실시간 통신 로직 ---
 // 'connection'은 손님이 가게에 전화를 걸면 자동으로 발생하는 이벤트입니다.
@@ -67,6 +69,9 @@ io.on("connection", (socket) => {
     console.log(`[연결 종료] 손님 전화 끊김: ${socket.id}`);
   });
 });
+
+// 서버가 요청을 기다리도록(listen) 설정합니다.
+const PORT = process.env.PORT || 3001;
 
 server.listen(PORT, () => {
   console.log(`🚀 서버가 ${PORT}번 포트에서 실행 중입니다.`);
